@@ -8,7 +8,6 @@ from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 import numpy as np
-import math
 
 app = FastAPI(title="3D Word Cloud API")
 
@@ -52,12 +51,25 @@ class AnalyzeResponse(BaseModel):
 
 
 def fetch_article(url: str) -> tuple[str, str]:
+    # Use Wikipedia REST API if it's a Wikipedia URL
+    if "wikipedia.org/wiki/" in url:
+        title_slug = url.split("/wiki/")[-1]
+        api_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title_slug}"
+        try:
+            with httpx.Client(follow_redirects=True, timeout=15) as client:
+                resp = client.get(api_url)
+                resp.raise_for_status()
+                data = resp.json()
+                title = data.get("title", "")
+                text = data.get("extract", "")
+                return title, text
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        )
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
     try:
         with httpx.Client(follow_redirects=True, timeout=15) as client:
@@ -67,8 +79,6 @@ def fetch_article(url: str) -> tuple[str, str]:
         raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
 
     soup = BeautifulSoup(resp.text, "html.parser")
-
-    # Get title
     title = ""
     title_tag = soup.find("title")
     if title_tag:
@@ -76,14 +86,10 @@ def fetch_article(url: str) -> tuple[str, str]:
     h1 = soup.find("h1")
     if h1:
         title = h1.get_text(strip=True)
-
-    # Remove boilerplate
     for tag in soup(["script", "style", "nav", "footer", "header",
                      "aside", "form", "button", "noscript", "iframe",
                      "meta", "link", "figure"]):
         tag.decompose()
-
-    # Try content containers first
     text = ""
     for selector in ["article", "main", '[role="main"]', ".article-body",
                      ".post-content", ".entry-content", ".content"]:
@@ -91,31 +97,25 @@ def fetch_article(url: str) -> tuple[str, str]:
         if el:
             text = el.get_text(separator=" ")
             break
-
     if not text:
         body = soup.find("body")
         text = body.get_text(separator=" ") if body else soup.get_text(separator=" ")
-
-    # Clean text
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"[^\w\s\-']", " ", text)
     return title, text
 
 
 def extract_words_tfidf(text: str, n_topics: int = 5) -> tuple[list[dict], list[list[str]]]:
-    # Tokenize
     words = re.findall(r"\b[a-z]{3,}\b", text.lower())
     words = [w for w in words if w not in STOP_WORDS]
 
     if len(words) < 20:
         raise HTTPException(status_code=422, detail="Not enough text content found.")
 
-    # Build sentences for TF-IDF
     sentences = re.split(r"[.!?]+", text.lower())
     sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
 
     if len(sentences) < 3:
-        # Fallback: simple frequency
         freq = Counter(words)
         total = sum(freq.values())
         results = [
@@ -124,7 +124,6 @@ def extract_words_tfidf(text: str, n_topics: int = 5) -> tuple[list[dict], list[
         ]
         return results, [list(freq.keys())[:10]]
 
-    # TF-IDF vectorizer
     vectorizer = TfidfVectorizer(
         max_features=200,
         stop_words=list(STOP_WORDS),
@@ -139,30 +138,25 @@ def extract_words_tfidf(text: str, n_topics: int = 5) -> tuple[list[dict], list[
 
     feature_names = vectorizer.get_feature_names_out()
 
-    # LSA for topic discovery
     n_topics = min(n_topics, tfidf_matrix.shape[0] - 1, tfidf_matrix.shape[1] - 1)
     n_topics = max(2, n_topics)
 
     lsa = TruncatedSVD(n_components=n_topics, random_state=42)
     lsa.fit(tfidf_matrix)
 
-    # Topic-word assignments
     topics = []
     for topic_idx, component in enumerate(lsa.components_):
         top_indices = component.argsort()[-10:][::-1]
         topic_words = [feature_names[i] for i in top_indices]
         topics.append(topic_words)
 
-    # Score each term by max TF-IDF across documents
     tfidf_dense = tfidf_matrix.toarray()
     term_scores = tfidf_dense.max(axis=0)
 
-    # Assign each term to its dominant topic
     word_results = []
     for i, (term, score) in enumerate(zip(feature_names, term_scores)):
         if score < 0.01:
             continue
-        # Which topic component loads this term most?
         topic_loadings = [abs(lsa.components_[t][i]) for t in range(n_topics)]
         dominant_topic = int(np.argmax(topic_loadings))
         word_results.append({
@@ -171,7 +165,6 @@ def extract_words_tfidf(text: str, n_topics: int = 5) -> tuple[list[dict], list[
             "topic": dominant_topic
         })
 
-    # Normalize weights to [0.3, 1.0]
     if word_results:
         max_w = max(r["weight"] for r in word_results)
         min_w = min(r["weight"] for r in word_results)
