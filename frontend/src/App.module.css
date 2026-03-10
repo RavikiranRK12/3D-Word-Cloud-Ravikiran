@@ -1,0 +1,129 @@
+.app {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.blob1 {
+  position: absolute;
+  top: -120px;
+  right: -80px;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0,255,200,0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  animation: drift1 12s ease-in-out infinite alternate;
+}
+
+.blob2 {
+  position: absolute;
+  bottom: -100px;
+  left: -60px;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(255,60,172,0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  animation: drift2 15s ease-in-out infinite alternate;
+}
+
+@keyframes drift1 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-30px, 30px); }
+}
+
+@keyframes drift2 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(20px, -20px); }
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.emptyState {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 0.35;
+}
+
+.hintIcon {
+  font-size: 3rem;
+  color: var(--accent);
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.9); }
+}
+
+.hint p {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.loadingOrbs {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.orb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce 0.9s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.8; }
+  50% { transform: translateY(-18px); opacity: 0.2; }
+}
+
+.controlsHint {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 10;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  animation: fadeIn 1s ease 0.5s both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
